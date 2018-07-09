@@ -1,0 +1,70 @@
+#!/usr/bin/python3
+
+"""
+# NAME - git-latest-tagged-commit
+
+# DESCRIPTION
+
+From in a git repo get the sha for the commit with
+the latest tag.  It is assumed that the tags are
+formatted like 1.14.2 or v1.0.10.
+
+    $ git-latest-tagged-commit 
+    16cb9f62f8a8b7af4f38725567f5ce762e1d562b
+
+# AUTHOR
+
+Jeremiah Mahler <jmmahler@gmail.com><br>
+<http://github.com/jmahler>
+
+"""
+
+import subprocess
+import sys
+import re
+
+git_tag_out = None
+try:
+    git_tag_out = subprocess.check_output('git tag', shell=True)
+except subprocess.CalledProcessError as e:
+    # git will output an error so we don't need to add ours
+    print("Did you run this from in a git repo?", file=sys.stderr)
+    sys.exit(1)
+git_tags = [line.decode("utf-8") for line in git_tag_out.splitlines()]
+
+version_pattern = re.compile('v?(\d+)\.(\d+)\.(\d+)')
+
+def version_key(version_str):
+    """ Given a version number string (e.g. v1.2.14, 0.10.2),
+    return a key which can be used for sort() or sorted().
+    Values which don't follow this pattern default to the
+    smallest number 0.
+    """
+    m = version_pattern.match(version_str)
+    y = 0  # default, smallest number
+    if m:
+        # Assuming each number doesn't exceed 100,
+        # convert it from a base 100 number.
+        b = 100
+        y = int(m.group(1)) * b**2 + \
+            int(m.group(2)) * b**1 + \
+            int(m.group(3)) * b**0
+    return y
+
+git_tags.sort(key = version_key, reverse=True)
+
+latest_tag = git_tags[0]
+
+tag_sha = None
+try:
+    cmd = 'git log {0} -1 --format=format:%H'.format(latest_tag)
+    tag_sha = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
+except subprocess.CalledProcessError as e:
+    print("Failed to run command: '{0}'".format(cmd))
+    sys.exit(2)
+
+latest_version = latest_tag
+if latest_version.startswith("v"):
+    latest_version = latest_version[1:]
+
+print("{0} {1} {2}".format(tag_sha, latest_version, latest_tag))

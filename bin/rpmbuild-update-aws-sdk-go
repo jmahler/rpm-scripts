@@ -1,0 +1,132 @@
+#!/usr/bin/python3
+
+rpm_name = 'golang-github-aws-aws-sdk-go'
+rpm_source_uri = 'https://src.fedoraproject.org/rpms/golang-github-aws-aws-sdk-go.git'
+upstream_name = 'aws-sdk-go'
+upstream_source_uri = 'https://github.com/aws/aws-sdk-go.git'
+release = "f29"
+
+import os
+import sys
+import subprocess
+from datetime import date
+
+def get_latest_source(name, uri, source):
+    """Make sure the Git repo has been cloned and is up to date
+    and located under ~/rpmbuild/SOURCES/
+    """
+
+    # get the rpm source
+    if not os.path.isdir(source):
+        try:
+            cmd = 'git clone {0} {1}'.format(uri, source)
+            subprocess.check_call(cmd, shell=True)
+        except:
+            print(cmd, file=sys.stderr)
+            print("Failed to clone {0}".format(uri), file=sys.stderr)
+            sys.exit(1)
+
+    # make sure the latest upstream code has been pulled
+    try:
+        cmd = 'git -C {0} pull'.format(source)
+        subprocess.check_call(cmd, shell=True)
+    except subprocess.CalledProcessError as e:
+        print("Failed to run '{0}'".format(cmd), file=sys.stderr)
+        sys.exit(2)
+
+def get_latest_tag(source):
+    "get the latest tagged commit sha"
+
+    try:
+        cmd = 'cd {0}; git-latest-tagged-commit'.format(source)
+        out = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
+    except:
+        print("Failed to run '{0}'".format(cmd), file=sys.stderr)
+        sys.exit(3)
+
+    info = out.split()  # sha version tag
+
+    return info
+
+def changelog_entry(email, version, sha):
+    short_sha = sha[0:7]
+
+    today = date.today().strftime("%a %b %d %Y")
+
+    entry = ("* {0} {1} - {2}-1.git{3}\n"
+             "- Update to version {2}\n"
+            ).format(today, email, version, short_sha)
+
+    return entry
+
+def update_spec(rpm_spec, version, sha, email):
+    with open(rpm_spec) as fd:
+        original = fd.read()
+
+    lines = original.split("\n")
+
+    for i in range(len(lines)):
+        line = lines[i]
+
+        if line.startswith("%global commit"):
+            lines[i] = "%global commit          {0}".format(sha)
+
+        if line.startswith("%changelog"):
+            lines.insert(i+1, changelog_entry(email, version, sha))
+
+        if line.startswith("Version: "):
+            lines[i] = "Version:        {0}".format(version)
+
+        if line.startswith("Release: "):
+            lines[i] = "Release:        1%{?dist}"
+
+    update = "\n".join(lines)
+
+    with open(rpm_spec, 'w') as fd:
+        print(update, file=fd, end='')
+
+def commit_change(source, version):
+    try:
+        cmd = "git -C {0} commit -a -m 'update to version {1}' --signoff".format(source, version)
+        subprocess.check_call(cmd, shell=True)
+    except subprocess.CalledProcessError as e:
+        print("Failed to run '{0}'".format(cmd), file=sys.stderr)
+        sys.exit(3)
+
+def build_local(spec):
+    try:
+        cmd = "rpmbuild --undefine=_disable_source_fetch -ba {0}".format(spec)
+        subprocess.check_call(cmd, shell=True)
+    except subprocess.CalledProcessError as e:
+        print("Failed to run '{0}'".format(cmd), file=sys.stderr)
+        sys.exit(4)
+
+def build_remote(rpmbuild, name, version, release):
+    try:
+        cmd = "koji build --scratch {3} {0}/SRPMS/{1}-{2}-1.*.src.rpm".format(rpmbuild, name, version, release)
+        subprocess.check_call(cmd, shell=True)
+    except subprocess.CalledProcessError as e:
+        print("Failed to run '{0}'".format(cmd), file=sys.stderr)
+        print("Do you need to kinit your fedora user?")
+        sys.exit(5)
+
+if __name__ == "__main__":
+    rpmbuild = os.path.expanduser("~/rpmbuild/")
+    rpm_source = os.path.expanduser("~/rpmbuild/SOURCES/{0}".format(rpm_name))
+    upstream_source = os.path.expanduser("~/rpmbuild/SOURCES/{0}".format(upstream_name))
+    rpm_spec = "{0}/SPECS/{1}.spec".format(rpmbuild, rpm_name)
+
+    get_latest_source(rpm_name, rpm_source_uri, rpm_source)
+    get_latest_source(upstream_name, upstream_source_uri, upstream_source)
+
+    (sha, version, tag) = get_latest_tag(upstream_source)
+
+    email = os.environ['EMAIL']
+
+    #update_spec(rpm_spec, version, sha, email)
+
+    #commit_change(rpm_source, version)
+
+    #build_local(rpm_spec)
+
+    build_remote(rpmbuild, rpm_name, version, release)
