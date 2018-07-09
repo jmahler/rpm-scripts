@@ -5,12 +5,13 @@
 
 # DESCRIPTION
 
-From in a git repo get the sha for the commit with
-the latest tag.  It is assumed that the tags are
-formatted like 1.14.2 or v1.0.10.
+From in a git repo get the sha and version for the
+commit with the latest tag.  It is assumed that the
+tags are formatted like 1.14.2 or v1.0.10.
 
-    $ git-latest-tagged-commit 
-    16cb9f62f8a8b7af4f38725567f5ce762e1d562b
+    $ git-latest-tagged-commit
+    16cb9f62f8a8b7af4f38725567f5ce762e1d562b 1.14.21 v1.14.21
+
 
 # AUTHOR
 
